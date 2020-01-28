@@ -1,0 +1,134 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+synapser::synLogin()
+foo <- synapser::synGet('syn21544714')
+scoreTable <- data.table::fread(foo$path,data.table=F)
+```
+
+
+```{r}
+produce_hit_gene_rank <- function(gene,scoreTable){
+  bar <- dplyr::filter(scoreTable,Target_Gene==gene)
+  #split into cor/parcar
+  bar_parcor <- dplyr::select(bar,
+                              Hit_Tissue,
+                              Hit_Gene,
+                              Hit_GeneName,
+                              Hit_Probability)
+  bar_cor <- dplyr::select(bar,
+                           Hit_Tissue,
+                           Hit_Gene,
+                           Hit_GeneName,
+                           Spearman_Correlation)
+  #pivot wider into tissue
+  
+  bar_parcor <- tidyr::pivot_wider(bar_parcor,
+                                   id_cols = c('Hit_Gene','Hit_GeneName'),
+                                   names_from = 'Hit_Tissue',
+                                   values_from = 'Hit_Probability')
+    bar_cor <- tidyr::pivot_wider(bar_cor,
+                                id_cols = c('Hit_Gene','Hit_GeneName'),
+                                names_from = 'Hit_Tissue',
+                                values_from = 'Spearman_Correlation')
+  #frank; min_rank()
+  bar_parcor_rank <- bar_parcor
+  bar_cor_rank <- bar_cor
+  fxn1 <- function(x){
+    return(rank(-x,ties.method='min'))
+  }
+  
+  fxn2 <- function(x){
+    return(rank(-abs(x),ties.method='min'))
+  }
+  
+  bar_parcor_rank[,-c(1,2)] <- apply(bar_parcor_rank[,-c(1,2)],
+                                     2,
+                                     fxn1)
+  bar_cor_rank[,-c(1,2)] <- apply(bar_cor_rank[,-c(1,2)],
+                                     2,
+                                     fxn2)
+  bar_ranks<-dplyr::left_join(bar_parcor_rank,bar_cor_rank,by=c('Hit_Gene','Hit_GeneName'))
+  
+  bar_ranks$Rank <- rank(-rowMeans(bar_parcor[,-c(1,2)]),
+                               ties.method='min')
+  
+  res <- dplyr::select(bar_ranks,Hit_Gene,Hit_GeneName,Rank)
+  res$Target_Gene <- gene
+  res$Target_GeneName <- bar$Target_GeneName[1]
+  res <- res[,c(4,5,1,2,3)]
+  return(res)
+}
+res <- lapply(unique(scoreTable$Target_Gene),
+              produce_hit_gene_rank,
+              scoreTable)
+res <- do.call(rbind,res)
+res$set <- 'M62'
+
+res_total <- res
+```
+
+
+Retromer
+```{r}
+synapser::synLogin()
+foo <- synapser::synGet('syn21546567')
+scoreTable <- data.table::fread(foo$path,data.table=F)
+res <- lapply(unique(scoreTable$Target_Gene),
+              produce_hit_gene_rank,
+              scoreTable)
+res <- do.call(rbind,res)
+res$set <- 'Retromer'
+
+res_total <- rbind(res_total,res)
+```
+
+pQTL
+
+```{r}
+synapser::synLogin()
+foo <- synapser::synGet('syn21546262')
+scoreTable <- data.table::fread(foo$path,data.table=F)
+res <- lapply(unique(scoreTable$Target_Gene),
+              produce_hit_gene_rank,
+              scoreTable)
+res <- do.call(rbind,res)
+res$set <- 'pqtl'
+
+res_total <- rbind(res_total,res)
+```
+
+
+emory targets
+
+```{r}
+synapser::synLogin()
+foo <- synapser::synGet('syn21546998')
+scoreTable <- data.table::fread(foo$path,data.table=F)
+res <- lapply(unique(scoreTable$Target_Gene),
+              produce_hit_gene_rank,
+              scoreTable)
+res <- do.call(rbind,res)
+res$set <- 'Emory'
+
+res_total <- rbind(res_total,res)
+```
+
+
+msn
+```{r}
+synapser::synLogin()
+foo <- synapser::synGet('syn21546838')
+scoreTable <- data.table::fread(foo$path,data.table=F)
+res <- lapply(unique(scoreTable$Target_Gene),
+              produce_hit_gene_rank,
+              scoreTable)
+res <- do.call(rbind,res)
+res$set <- 'msn'
+
+res_total <- rbind(res_total,res)
+```
+

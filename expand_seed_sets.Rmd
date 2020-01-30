@@ -130,5 +130,9 @@ res <- do.call(rbind,res)
 res$set <- 'msn'
 
 res_total <- rbind(res_total,res)
+
+write.csv(res_total,file='seed_set_expanded_ranking.csv',row.names=F,quote=F)
+write.csv(dplyr::filter(res_total,Rank<=50),file='seed_set_top50_ranking.csv',row.names=F,quote=F)
+
 ```
 

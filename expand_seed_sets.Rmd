@@ -3,11 +3,45 @@ title: "R Notebook"
 output: html_notebook
 ---
 
+
+
+
+
 ```{r}
 synapser::synLogin()
 foo <- synapser::synGet('syn21544714')
 scoreTable <- data.table::fread(foo$path,data.table=F)
 ```
+
+quick vbsr check
+```{r}
+foo <- synapser::synGet('syn21291908')
+bar <- data.table::fread(foo$path,data.table=F)
+tcx <- dplyr::select(bar,ensembl_gene_id,dplyr::ends_with('TCX') )
+rownames(tcx) <- tcx$ensembl_gene_id
+tcx <- tcx[,-1]
+tcx2 <- bcv::impute.svd((tcx))
+tcx3 <- tcx2$x
+rownames(tcx3) <- rownames(tcx)
+colnames(tcx3) <- colnames(tcx)
+#smoc1
+y <- tcx3['ENSG00000198732',]
+x <- tcx3[!rownames(tcx3)%in%('ENSG00000198732'),]
+
+x <- t(x)
+
+
+res<-spike::vbsrBootstrap(y=y,x = x,nsamp=100)
+#res4<-spike::vbsrBootstrap(y=y,x = scale(x),nsamp=10)
+res4 <- glmnet::cv.glmnet(y=y,x=scale(x),lambda=exp(seq(-8,-1,length.out=100)))
+beta_lasso <- res4$glmnet.fit$beta[,res4$lambda==res4$lambda.1se]
+smoc1 <- dplyr::filter(scoreTable,Target_GeneName=='SMOC1',Hit_Tissue=='TCX')
+
+bl <- data.frame(beta=beta_lasso,geneid=names(beta_lasso),stringsAsFactors = F)
+smoc1 <- dplyr::left_join(smoc1,bl,by=c('Hit_Gene'='geneid'))
+
+```
+
 
 
 ```{r}

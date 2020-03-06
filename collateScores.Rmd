@@ -1,0 +1,101 @@
+---
+title: "Collate scores"
+output: html_notebook
+---
+
+Pull genetics and genomics scores for MSN
+
+```{r}
+synapser::synLogin()
+msnObj<-synapser::synGet('syn21652325')
+msn <- data.table::fread(msnObj$path,data.table=F)
+msn <- msn[,-1]
+```
+
+Pull genetics and genomics scores for Retromer
+```{r}
+synapser::synLogin()
+retromerObj<-synapser::synGet('syn21652323')
+retromer <- data.table::fread(retromerObj$path,data.table=F)
+retromer <- retromer[,-1]
+```
+
+
+Push raw data to synapse project for reference data (syn21534582)
+```{r}
+#library(dplyr)
+#synapser::File('data/OPEN-AD.literature.030220.xlsx',parent='syn21534582') %>% synapser::synStore()
+#synapser::File('data/OPEN-AD.literature.030220b.pptx',parent='syn21534582') %>% synapser::synStore()
+#synapser::File('data/OPENAD_02172020.pdf',parent='syn21534582') %>% synapser::synStore()
+#synapser::File('data/OPENAD_Fly_Validation_030420.xlsx',parent='syn21534582') %>% synapser::synStore()
+```
+
+pull down literature and reformat appropriately
+```{r}
+literatureObj <- synapser::synGet('syn21724349')
+noveltyMetric <- readxl::read_excel(literatureObj$path,sheet='ADassociationsPerYear')
+pubsLastFiveYears <- colSums(noveltyMetric[37:41,-1])
+totalPubs <- colSums(noveltyMetric[,-1])
+appPubs <- totalPubs[15]
+
+recency<-pubsLastFiveYears/totalPubs
+recency[totalPubs<=10]<- 1
+
+literatureScore <- (1 - log10(totalPubs+1)/log10(appPubs+1))
+literatureScore <- literatureScore*recency
+
+litScoreDf <- data.frame(Gene=names(literatureScore),
+                         litScore=literatureScore,
+                         stringsAsFactors=F)
+#View(litScoreDf)
+
+```
+
+
+pull down fly neuropath and reformat appropriately (syn21724443)
+
+```{r}
+flynpObj <- synapser::synGet('syn21724443')
+flynp <- readxl::read_excel(flynpObj$path,sheet='Sheet1')
+flynp$FlyNeuroPathScore <- flynp$Score/max(flynp$Score)
+flynp <- dplyr::select(flynp,`Human Gene`,'FlyNeuroPathScore')
+```
+
+
+Combine into a single data frame and push to synapse with provenance.
+
+```{r}
+msn <- dplyr::select(msn,-overall)
+retromer <- dplyr::select(retromer,-overall)
+msn$pathway <- 'MSN'
+retromer$pathway <- 'Endosomal'
+targetDf <- rbind(msn,retromer)
+targetDf <- dplyr::left_join(targetDf,
+                             litScoreDf,
+                             by=c('GeneName'='Gene'))
+targetDf <- dplyr::left_join(targetDf,
+                             flynp,
+                             by=c('GeneName'='Human Gene'))
+targetDf$OverallScore <- rowSums(dplyr::select(targetDf,
+                                               'Omic.score',
+                                               'Genetic.score',
+                                               'litScore',
+                                               'FlyNeuroPathScore'),na.rm=T)
+
+targetDf <- dplyr::arrange(targetDf,dplyr::desc(OverallScore))
+targetDf <- dplyr::select(targetDf,ENSG,GeneName,pathway,Genetic.score,pathway,litScore,FlyNeuroPathScore,OverallScore)
+
+write.csv(targetDf,file='data/OPENADTargetScores.csv',quote=F,row.names=F)
+
+```
+
+
+```{r}
+foo <- synapser::File('data/OPENADTargetScores.csv',
+                      parent='syn21739107')
+foo <- synapser::synStore(foo,
+                          used = c('syn21652325','syn21652323','syn21724349','syn21724443'),
+                          executed = '',
+                          forceVersion=FALSE)
+```
+

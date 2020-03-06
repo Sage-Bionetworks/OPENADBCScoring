@@ -95,7 +95,7 @@ foo <- synapser::File('data/OPENADTargetScores.csv',
                       parent='syn21739107')
 foo <- synapser::synStore(foo,
                           used = c('syn21652325','syn21652323','syn21724349','syn21724443'),
-                          executed = '',
+                          executed = 'https://github.com/blogsdon/OPENADBCScoring/blob/d0c85f5b05bd4f477871b0d31214abcbc83b23b1/collateScores.Rmd',
                           forceVersion=FALSE)
 ```
 

@@ -20,6 +20,22 @@ retromer <- data.table::fread(retromerObj$path,data.table=F)
 retromer <- retromer[,-1]
 ```
 
+Pull genetics and genomics scores for smoc1
+```{r}
+synapser::synLogin()
+smoc1Obj<-synapser::synGet('syn21740156')
+smoc1<- data.table::fread(smoc1Obj$path,data.table=F)
+smoc1 <- smoc1[,-1]
+```
+
+Pull genetics and genomics scores for pQTL
+```{r}
+synapser::synLogin()
+pqtlObj<-synapser::synGet('syn21739428')
+pqtl <- data.table::fread(pqtlObj$path,data.table=F)
+pqtl <- pqtl[,-1]
+```
+
 
 Push raw data to synapse project for reference data (syn21534582)
 ```{r}
@@ -42,7 +58,7 @@ recency<-pubsLastFiveYears/totalPubs
 recency[totalPubs<=10]<- 1
 
 literatureScore <- (1 - log10(totalPubs+1)/log10(appPubs+1))
-literatureScore <- literatureScore*recency
+literatureScore <- literatureScore*recency*2
 
 litScoreDf <- data.frame(Gene=names(literatureScore),
                          litScore=literatureScore,
@@ -57,8 +73,8 @@ pull down fly neuropath and reformat appropriately (syn21724443)
 ```{r}
 flynpObj <- synapser::synGet('syn21724443')
 flynp <- readxl::read_excel(flynpObj$path,sheet='Sheet1')
-flynp$FlyNeuroPathScore <- flynp$Score/max(flynp$Score)
-flynp <- dplyr::select(flynp,`Human Gene`,'FlyNeuroPathScore')
+flynp$FlyNeuroPathScore <- (flynp$Score/max(flynp$Score))*2
+flynp <- dplyr::select(flynp,`Human Gene`,`Fly Homolog`,'FlyNeuroPathScore')
 ```
 
 
@@ -67,9 +83,13 @@ Combine into a single data frame and push to synapse with provenance.
 ```{r}
 msn <- dplyr::select(msn,-overall)
 retromer <- dplyr::select(retromer,-overall)
+smoc1 <- dplyr::select(smoc1,-overall)
+pqtl <- dplyr::select(pqtl,-overall)
 msn$pathway <- 'MSN'
 retromer$pathway <- 'Endosomal'
-targetDf <- rbind(msn,retromer)
+smoc1$pathway <- 'SMOC1'
+pqtl$pathway <- 'pqtl'
+targetDf <- rbind(msn,retromer,smoc1,pqtl)
 targetDf <- dplyr::left_join(targetDf,
                              litScoreDf,
                              by=c('GeneName'='Gene'))
@@ -77,25 +97,52 @@ targetDf <- dplyr::left_join(targetDf,
                              flynp,
                              by=c('GeneName'='Human Gene'))
 targetDf$OverallScore <- rowSums(dplyr::select(targetDf,
-                                               'Omic.score',
-                                               'Genetic.score',
+                                               'Omic_score',
+                                               'Genetic_score',
                                                'litScore',
                                                'FlyNeuroPathScore'),na.rm=T)
 
 targetDf <- dplyr::arrange(targetDf,dplyr::desc(OverallScore))
-targetDf <- dplyr::select(targetDf,ENSG,GeneName,pathway,Genetic.score,pathway,litScore,FlyNeuroPathScore,OverallScore)
+colnames(targetDf)[which(colnames(targetDf)=='Fly Homolog')] <- 'Fly_Homolog'
+targetDf <- dplyr::select(targetDf,
+                          GeneName,
+                          Fly_Homolog,
+                          pathway,
+                          Genetic_score,
+                          Omic_score,
+                          litScore,
+                          FlyNeuroPathScore,
+                          OverallScore)
 
-write.csv(targetDf,file='data/OPENADTargetScores.csv',quote=F,row.names=F)
+
 
 ```
+
+
+
+
+download druggability
+```{r}
+fooObj <- synapser::synGet('syn13363443')
+druggability <- data.table::fread(fooObj$path,data.table=F)
+geneTable <- utilityFunctions::convertEnsemblToHgnc(druggability$GeneID)
+druggability <- dplyr::left_join(druggability,geneTable,by=c('GeneID'='ensembl_gene_id'))
+```
+
+
+join with target matrix
+```{r}
+targetDf <- dplyr::left_join(targetDf,druggability,by=c('GeneName'='external_gene_name'))
+write.csv(targetDf,file='data/OPENADTargetScores.csv',quote=F,row.names=F)
+```
+
 
 
 ```{r}
 foo <- synapser::File('data/OPENADTargetScores.csv',
                       parent='syn21739107')
 foo <- synapser::synStore(foo,
-                          used = c('syn21652325','syn21652323','syn21724349','syn21724443'),
-                          executed = 'https://github.com/blogsdon/OPENADBCScoring/blob/ba45915bcab587e68e31780b58366c7d7ff0d12b/collateScores.Rmd',
-                          forceVersion=FALSE)
+                          used = c('syn21652325','syn21652323','syn21724349','syn21724443','syn21740156','syn21739428','syn13363443'),
+                          executed = 'https://github.com/blogsdon/OPENADBCScoring/blob/ba45915bcab587e68e31780b58366c7d7ff0d12b/collateScores.Rmd')
 ```
 
